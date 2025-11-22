@@ -8,17 +8,17 @@ import (
 
 // User представляет участника команды.
 type User struct {
-	ID       uuid.UUID
-	Name     string
-	TeamID   uuid.UUID
-	IsActive bool
+	ID       uuid.UUID `json:"user_id"`
+	Username string    `json:"username"`
+	TeamID   uuid.UUID `json:"team_id"`
+	IsActive bool      `json:"is_active"`
 }
 
 // Team представляет команду пользователей.
 type Team struct {
-	ID      uuid.UUID
-	Name    string
-	Members []User
+	ID      uuid.UUID `json:"team_id"`
+	Name    string    `json:"team_name"`
+	Members []User    `json:"members,omitempty"`
 }
 
 // PRStatus описывает статус Pull Request.
@@ -29,8 +29,8 @@ const (
 	MERGED PRStatus = "MERGED"
 )
 
-// PR представляет Pull Request с назначенными ревьюверами.
-type PR struct {
+// PullRequest представляет Pull Request с назначенными ревью верами
+type PullRequest struct {
 	ID        uuid.UUID   `json:"pull_request_id"`
 	Title     string      `json:"pull_request_name"`
 	AuthorID  uuid.UUID   `json:"author_id"`
