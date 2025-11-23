@@ -1,3 +1,6 @@
+// Package repository предоставляет функции для работы с базой данных.
+// Репозитории отвечают за выполнение SQL запросов и преобразование
+// данных БД в доменные модели.
 package repository
 
 import (
@@ -10,15 +13,47 @@ import (
 	"github.com/google/uuid"
 )
 
+// UserRepository предоставляет методы для работы с пользователями в базе данных.
+// Использует стандартный database/sql для выполнения SQL запросов.
 type UserRepository struct {
+	// DB - соединение с базой данных PostgreSQL
 	DB *sql.DB
 }
 
+// NewUserRepository создает новый экземпляр UserRepository.
+//
+// Параметры:
+//   - db: соединение с базой данных
+//
+// Возвращает:
+//   - *UserRepository: новый репозиторий для работы с пользователями
 func NewUserRepository(db *sql.DB) *UserRepository {
 	return &UserRepository{DB: db}
 }
 
-// CreateUser сохраняет пользователя в БД
+// CreateUser сохраняет нового пользователя в базе данных.
+//
+// Параметры:
+//   - user: объект пользователя с заполненными полями
+//   - ID должен быть сгенерирован заранее (uuid.New())
+//   - Username должен быть уникальным
+//   - TeamID может быть пустым (nil UUID)
+//   - IsActive определяет, может ли пользователь быть ревьювером
+//
+// Возвращает:
+//   - error: ошибка, если не удалось сохранить
+//   - Может быть ошибка уникальности username
+//   - Может быть ошибка внешнего ключа team_id
+//
+// Пример использования:
+//
+//	user := &model.User{
+//	    ID: uuid.New(),
+//	    Username: "john_doe",
+//	    TeamID: teamID,
+//	    IsActive: true,
+//	}
+//	err := repo.CreateUser(user)
 func (r *UserRepository) CreateUser(user *model.User) error {
 	query := `
 		INSERT INTO users (id, username, team_id, is_active, created_at)
@@ -28,7 +63,21 @@ func (r *UserRepository) CreateUser(user *model.User) error {
 	return err
 }
 
-// GetUserByID возвращает пользователя по ID
+// GetUserByID возвращает пользователя по его уникальному идентификатору.
+//
+// Параметры:
+//   - id: UUID пользователя
+//
+// Возвращает:
+//   - *model.User: найденный пользователь
+//   - error: ошибка, если пользователь не найден (sql.ErrNoRows)
+//
+// Пример использования:
+//
+//	user, err := repo.GetUserByID(userID)
+//	if err != nil {
+//	    // Пользователь не найден
+//	}
 func (r *UserRepository) GetUserByID(id uuid.UUID) (*model.User, error) {
 	query := `
 		SELECT id, username, team_id, is_active
@@ -44,13 +93,26 @@ func (r *UserRepository) GetUserByID(id uuid.UUID) (*model.User, error) {
 	return &u, nil
 }
 
-// Update обновляет пользователя
+// Update обновляет пользователя.
+//
+// Параметры:
+//   - user: объект пользователя с обновленными полями (ID должен быть заполнен)
+//
+// Возвращает:
+//   - *model.User: обновленный пользователь
+//   - error: ошибка, если пользователь не найден или произошла ошибка БД
+//
+// Пример использования:
+//
+//	user.Username = "new_username"
+//	user.IsActive = false
+//	updated, err := repo.Update(user)
 func (r *UserRepository) Update(user *model.User) (*model.User, error) {
 	query := `
 		UPDATE users
 		SET username=$1, team_id=$2, is_active=$3
 		WHERE id=$4
-		RETURNING id, username, team_id, is_active, created_at
+		RETURNING id, username, team_id, is_active
 	`
 	row := r.DB.QueryRow(query, user.Username, user.TeamID, user.IsActive, user.ID)
 	var u model.User
@@ -67,7 +129,25 @@ func (r *UserRepository) Delete(id uuid.UUID) error {
 	return err
 }
 
-// GetPRsByReviewer возвращает список PR, где пользователь назначен ревьювером
+// GetPRsByReviewer возвращает список всех Pull Request, где указанный пользователь
+// назначен ревьювером.
+//
+// Используется для получения списка PR, которые пользователь должен отревьювить.
+// Результаты отсортированы по дате создания (новые первыми).
+//
+// Параметры:
+//   - userID: UUID пользователя-ревьювера
+//
+// Возвращает:
+//   - []model.PullRequest: список PR с полной информацией, включая список всех ревьюверов
+//   - error: ошибка выполнения запроса
+//
+// Пример использования:
+//
+//	prs, err := repo.GetPRsByReviewer(reviewerID)
+//	for _, pr := range prs {
+//	    // Обработка каждого PR
+//	}
 func (r *UserRepository) GetPRsByReviewer(userID uuid.UUID) ([]model.PullRequest, error) {
 	query := `
 		SELECT pr.id, pr.pull_request_name, pr.author_id, pr.status, pr.created_at, pr.merged_at
@@ -89,7 +169,9 @@ func (r *UserRepository) GetPRsByReviewer(userID uuid.UUID) ([]model.PullRequest
 		if err != nil {
 			return nil, err
 		}
-		// Load reviewers for this PR
+		// Загружаем список всех ревьюверов для этого PR
+		// Это необходимо, так как в основном запросе мы получаем только информацию о PR,
+		// а список ревьюверов хранится в отдельной таблице pr_reviewers
 		reviewersQuery := `SELECT reviewer_id FROM pr_reviewers WHERE pr_id = $1`
 		reviewerRows, err := r.DB.Query(reviewersQuery, pr.ID)
 		if err != nil {
@@ -111,7 +193,26 @@ func (r *UserRepository) GetPRsByReviewer(userID uuid.UUID) ([]model.PullRequest
 	return prs, nil
 }
 
-// GetActiveUsersByTeam возвращает активных пользователей команды, исключая указанного
+// GetActiveUsersByTeam возвращает список активных пользователей команды,
+// исключая указанного пользователя.
+//
+// Используется при назначении ревьюверов на PR, чтобы исключить автора
+// из списка кандидатов на ревью.
+//
+// Параметры:
+//   - teamID: UUID команды
+//   - excludeID: UUID пользователя, которого нужно исключить из результата
+//     (обычно это автор PR)
+//
+// Возвращает:
+//   - []model.User: список активных пользователей (is_active = true)
+//     Результаты отсортированы по username
+//   - error: ошибка выполнения запроса
+//
+// Пример использования:
+//
+//	// Получить всех активных пользователей команды, кроме автора PR
+//	candidates, err := repo.GetActiveUsersByTeam(teamID, authorID)
 func (r *UserRepository) GetActiveUsersByTeam(teamID uuid.UUID, excludeID uuid.UUID) ([]model.User, error) {
 	query := `
 		SELECT id, username, team_id, is_active
@@ -135,6 +236,26 @@ func (r *UserRepository) GetActiveUsersByTeam(teamID uuid.UUID, excludeID uuid.U
 		users = append(users, u)
 	}
 	return users, nil
+}
+
+// DeactivateTeamMembers массово деактивирует всех пользователей команды
+func (r *UserRepository) DeactivateTeamMembers(teamID uuid.UUID) (int, error) {
+	query := `
+		UPDATE users
+		SET is_active = false
+		WHERE team_id = $1 AND is_active = true
+	`
+	result, err := r.DB.Exec(query, teamID)
+	if err != nil {
+		return 0, err
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return 0, err
+	}
+
+	return int(rowsAffected), nil
 }
 
 // GetActiveUsersByTeamExcluding возвращает активных пользователей команды, исключая несколько пользователей

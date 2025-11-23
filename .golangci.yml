@@ -1,0 +1,120 @@
+# Конфигурация golangci-lint для проекта
+
+run:
+  timeout: 5m
+  tests: true
+  skip-dirs:
+    - vendor
+    - bin
+    - .git
+
+linters-settings:
+  errcheck:
+    check-type-assertions: true
+    check-blank: true
+  
+  goconst:
+    min-len: 3
+    min-occurrences: 3
+  
+  gocritic:
+    enabled-tags:
+      - diagnostic
+      - experimental
+      - opinionated
+      - performance
+      - style
+    disabled-checks:
+      - dupImport
+      - ifElseChain
+      - octalLiteral
+      - whyNoLint
+      - wrapperFunc
+  
+  govet:
+    check-shadowing: true
+    enable-all: true
+  
+  gocyclo:
+    min-complexity: 15
+  
+  goimports:
+    local-prefixes: avito-assignment
+  
+  golint:
+    min-confidence: 0.8
+  
+  gosec:
+    severity: medium
+    confidence: medium
+  
+  maligned:
+    suggest-new: true
+  
+  misspell:
+    locale: US
+  
+  nakedret:
+    max-func-lines: 30
+  
+  noctx:
+    check-http-call: true
+    check-http-get: true
+    check-http-head: true
+    check-http-post: true
+  
+  nolintlint:
+    allow-leading-space: true
+    allow-unused: false
+    require-explanation: false
+    require-specific: false
+
+linters:
+  disable-all: true
+  enable:
+    - errcheck
+    - goconst
+    - gocritic
+    - gofmt
+    - goimports
+    - golint
+    - gosec
+    - gosimple
+    - govet
+    - ineffassign
+    - misspell
+    - staticcheck
+    - structcheck
+    - typecheck
+    - unused
+    - varcheck
+    - bodyclose
+    - exportloopref
+    - gocyclo
+    - goerr113
+    - goprintffuncname
+    - rowserrcheck
+    - sqlclosecheck
+    - unconvert
+    - unparam
+    - whitespace
+
+issues:
+  exclude-rules:
+    - path: _test\.go
+      linters:
+        - errcheck
+        - gocyclo
+        - gocritic
+    - text: "Error return value of .((os\\.)?std(out|err)\\..*|.*Close|.*Flush|os\\.Remove(All)?|.*printf?|os\\.(Un)?Setenv). is not checked"
+      linters:
+        - errcheck
+    - text: "exported function .* should have comment or be unexported"
+      linters:
+        - golint
+    - text: "should have comment"
+      linters:
+        - golint
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
