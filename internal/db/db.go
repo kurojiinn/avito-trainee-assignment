@@ -19,7 +19,7 @@ func Connect(cfg *config.DBConfig) *sql.DB {
 		log.Fatalf("Failed to open DB connection: %v", err)
 	}
 
-	if err := db.Ping(); err != nil {
+	if err = db.Ping(); err != nil {
 		log.Fatalf("Failed to ping DB: %v", err)
 	}
 

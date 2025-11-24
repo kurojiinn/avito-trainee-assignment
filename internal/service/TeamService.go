@@ -24,16 +24,13 @@ func NewTeamService(teamRepo *repository.TeamRepository, userRepo *repository.Us
 // CreateTeam создает команду
 func (s *TeamService) CreateTeam(team *model.Team) (*model.Team, error) {
 	// Проверяем уникальность имени
-	existing, err := s.teamRepo.GetByName(team.Name)
-	if err != nil {
-		return nil, err
-	}
+	existing, _ := s.teamRepo.GetByName(team.Name)
 	if existing != nil {
 		return nil, errors.New("team with this name already exists" + team.Name)
 	}
 
 	team.ID = uuid.New()
-	err = s.teamRepo.Create(team)
+	err := s.teamRepo.Create(team)
 	if err != nil {
 		return nil, err
 	}

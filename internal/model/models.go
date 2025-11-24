@@ -9,7 +9,7 @@ import (
 // User представляет участника команды.
 type User struct {
 	Username string    `json:"username"`
-	ID       uuid.UUID `json:"user_id"`
+	ID       uuid.UUID `json:"user_id,omitempty"`
 	TeamID   uuid.UUID `json:"team_id"`
 	IsActive bool      `json:"is_active"`
 }
