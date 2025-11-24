@@ -92,7 +92,6 @@ func (h *PRHandler) GetPR(w http.ResponseWriter, r *http.Request) {
 func (h *PRHandler) ReassignReviewer(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-	// 1. Читаем JSON
 	var req struct {
 		PullRequestID string `json:"pull_request_id"`
 		OldUserID     string `json:"old_user_id"`
@@ -103,13 +102,11 @@ func (h *PRHandler) ReassignReviewer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 2. Проверяем, что пришли нужные поля
 	if req.PullRequestID == "" || req.OldUserID == "" {
 		http.Error(w, `{"error":"pull_request_id and old_user_id are required"}`, http.StatusBadRequest)
 		return
 	}
 
-	// 3. Парсим UUID
 	prID, err := uuid.Parse(req.PullRequestID)
 	if err != nil {
 		http.Error(w, `{"error":"invalid pull_request_id (must be UUID)"}`, http.StatusBadRequest)
@@ -122,7 +119,6 @@ func (h *PRHandler) ReassignReviewer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 4. Вызываем доменную логику
 	updatedPR, replacedBy, err := h.Service.ReassignReviewer(prID, oldUserID)
 	if err != nil {
 		switch err.Error() {
@@ -198,7 +194,6 @@ func (h *PRHandler) ReassignReviewer(w http.ResponseWriter, r *http.Request) {
 func (h *PRHandler) MergePR(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-	// 1. Читаем JSON в структуру
 	var req struct {
 		PullRequestID string `json:"pull_request_id"`
 	}
@@ -208,20 +203,17 @@ func (h *PRHandler) MergePR(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 2. Проверяем, что значение пришло
 	if req.PullRequestID == "" {
 		http.Error(w, `{"error": "pull_request_id is required"}`, http.StatusBadRequest)
 		return
 	}
 
-	// 3. Парсим UUID
 	prID, err := uuid.Parse(req.PullRequestID)
 	if err != nil {
 		http.Error(w, `{"error": "invalid pull_request_id (must be UUID)"}`, http.StatusBadRequest)
 		return
 	}
 
-	// 4. Вызываем сервис
 	_, errMerged := h.Service.MergePR(prID)
 	if errMerged != nil {
 		if errMerged.Error() == "pull request not found" {
@@ -245,7 +237,6 @@ func (h *PRHandler) MergePR(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 5. Возвращаем PR
 	err = json.NewEncoder(w).Encode(map[string]interface{}{
 		"pr": "PR в состоянии MERGED",
 	})

@@ -59,7 +59,5 @@ DROP TABLE IF EXISTS pull_requests;
 DROP TABLE IF EXISTS users;
 DROP TABLE IF EXISTS teams;
 
--- Удаляем ENUM pr_status
 DROP TYPE IF EXISTS pr_status;
 
--- Расширение uuid-ossp оставляем на месте

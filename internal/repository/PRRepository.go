@@ -29,7 +29,6 @@ func (r *PRRepository) Create(pr *model.PullRequest, reviewers []uuid.UUID) erro
 		}
 	}()
 
-	// Создаем PR
 	query := `
 		INSERT INTO pull_requests (id, pull_request_name, author_id, status, created_at)
 		VALUES ($1, $2, $3, $4, $5)
@@ -39,7 +38,6 @@ func (r *PRRepository) Create(pr *model.PullRequest, reviewers []uuid.UUID) erro
 		return err
 	}
 
-	// Назначаем ревьюверов
 	for _, reviewerID := range reviewers {
 		reviewerQuery := `
 			INSERT INTO pr_reviewers (pr_id, reviewer_id, assigned_at)
@@ -68,7 +66,6 @@ func (r *PRRepository) GetByID(id uuid.UUID) (*model.PullRequest, error) {
 		return nil, err
 	}
 
-	// Загружаем ревьюверов
 	reviewersQuery := `
 		SELECT reviewer_id
 		FROM pr_reviewers
@@ -113,33 +110,7 @@ func (r *PRRepository) Update(pr *model.PullRequest) error {
 }
 
 // ReassignReviewer заменяет одного ревьювера на другого в указанном PR.
-//
-// Оптимизированная версия, которая выполняет проверки в одном SQL запросе
-// для уменьшения количества обращений к БД и улучшения производительности.
-//
-// Бизнес-правила:
-//   - PR должен иметь статус OPEN (нельзя переназначать в MERGED)
-//   - Старый ревьювер должен быть назначен на PR
-//   - Операция выполняется в транзакции для атомарности
-//
-// Параметры:
-//   - prID: UUID Pull Request
-//   - oldReviewerID: UUID ревьювера, которого нужно заменить
-//   - newReviewerID: UUID нового ревьювера
-//
-// Возвращает:
-//   - error: ошибка, если:
-//   - PR не найден
-//   - PR имеет статус MERGED
-//   - Старый ревьювер не назначен на PR
-//   - Ошибка выполнения транзакции
-//
-// Пример использования:
-//
-//	err := repo.ReassignReviewer(prID, oldReviewerID, newReviewerID)
 func (r *PRRepository) ReassignReviewer(prID, oldReviewerID, newReviewerID uuid.UUID) error {
-	// Начинаем транзакцию для обеспечения атомарности операции
-	// Если произойдет ошибка, все изменения будут откачены
 	tx, err := r.DB.Begin()
 	if err != nil {
 		return err
@@ -151,8 +122,6 @@ func (r *PRRepository) ReassignReviewer(prID, oldReviewerID, newReviewerID uuid.
 		}
 	}()
 
-	// Оптимизированная проверка: проверяем статус PR и существование ревьювера в одном запросе
-	// Это уменьшает количество обращений к БД с 2 до 1, что важно для производительности
 	var status string
 	var reviewerExists bool
 	checkQuery := `
@@ -174,7 +143,6 @@ func (r *PRRepository) ReassignReviewer(prID, oldReviewerID, newReviewerID uuid.
 		return sql.ErrNoRows
 	}
 
-	// Удаляем старого ревьювера
 	deleteQuery := `
 		DELETE FROM pr_reviewers
 		WHERE pr_id = $1 AND reviewer_id = $2
@@ -184,7 +152,6 @@ func (r *PRRepository) ReassignReviewer(prID, oldReviewerID, newReviewerID uuid.
 		return err
 	}
 
-	// Добавляем нового ревьювера
 	insertQuery := `
 		INSERT INTO pr_reviewers (pr_id, reviewer_id, assigned_at)
 		VALUES ($1, $2, $3)
@@ -210,7 +177,6 @@ func (r *PRRepository) Merge(prID uuid.UUID) error {
 		}
 	}()
 
-	// Проверяем текущий статус
 	var currentStatus string
 	var mergedAt *time.Time
 	statusQuery := `SELECT status, merged_at FROM pull_requests WHERE id = $1`
@@ -219,12 +185,10 @@ func (r *PRRepository) Merge(prID uuid.UUID) error {
 		return err
 	}
 
-	// Если уже MERGED, ничего не делаем (идемпотентность)
 	if currentStatus == "MERGED" {
 		return tx.Commit()
 	}
 
-	// Обновляем статус
 	now := time.Now()
 	updateQuery := `
 		UPDATE pull_requests
@@ -267,7 +231,6 @@ func (r *PRRepository) GetAll() ([]model.PullRequest, error) {
 			return nil, err
 		}
 
-		// Загружаем ревьюверов
 		reviewersQuery := `SELECT reviewer_id FROM pr_reviewers WHERE pr_id = $1 ORDER BY assigned_at`
 		reviewerRows, errQuery := r.DB.Query(reviewersQuery, pr.ID)
 		if errQuery != nil {

@@ -105,15 +105,12 @@ func (s *TeamService) DeleteTeam(id uuid.UUID) error {
 // ДОП задание
 
 // DeactivateTeamMembers массово деактивирует всех пользователей команды
-// и безопасно переназначает ревьюверов для открытых PR
 func (s *TeamService) DeactivateTeamMembers(teamID uuid.UUID, prService *PRService) (int, error) {
-	// Проверяем существование команды
 	_, err := s.teamRepo.GetByID(teamID)
 	if err != nil {
 		return 0, errors.New("team not found")
 	}
 
-	// Получаем всех активных пользователей команды
 	activeUsers, err := s.userRepo.GetActiveUsersByTeam(teamID, uuid.Nil)
 	if err != nil {
 		return 0, err
@@ -123,29 +120,23 @@ func (s *TeamService) DeactivateTeamMembers(teamID uuid.UUID, prService *PRServi
 		return 0, nil
 	}
 
-	// Получаем все открытые PR
 	allPRs, err := prService.GetAllPRs()
 	if err != nil {
 		return 0, err
 	}
 
-	// Находим открытые PR с ревьюверами из деактивируемой команды
 	userIDMap := make(map[uuid.UUID]bool)
 	for _, user := range activeUsers {
 		userIDMap[user.ID] = true
 	}
 
-	// Переназначаем ревьюверов для открытых PR
 	for _, pr := range allPRs {
 		if pr.Status != model.OPEN {
 			continue
 		}
 
-		// Находим ревьюверов из деактивируемой команды
 		for _, reviewerID := range pr.Reviewers {
 			if userIDMap[reviewerID] {
-				// Используем существующий метод переназначения
-				// Он автоматически найдет замену из команды ревьювера
 				_, _, err = prService.ReassignReviewer(pr.ID, reviewerID)
 				if err != nil {
 					// Если не удалось переназначить (нет доступных ревьюверов),
@@ -156,7 +147,6 @@ func (s *TeamService) DeactivateTeamMembers(teamID uuid.UUID, prService *PRServi
 		}
 	}
 
-	// Деактивируем пользователей
 	deactivatedCount, err := s.userRepo.DeactivateTeamMembers(teamID)
 	if err != nil {
 		return 0, err
