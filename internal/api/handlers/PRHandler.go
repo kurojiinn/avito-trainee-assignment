@@ -1,6 +1,3 @@
-// Package handlers содержит HTTP обработчики для API endpoints.
-// Обработчики отвечают за парсинг HTTP запросов, валидацию данных,
-// вызов сервисов и формирование HTTP ответов.
 package handlers
 
 import (
@@ -14,68 +11,60 @@ import (
 )
 
 // PRHandler обрабатывает HTTP запросы, связанные с Pull Requests.
-// Делегирует бизнес-логику сервису PRService.
 type PRHandler struct {
-	Service *service.PRService // Сервис с бизнес-логикой для PR
+	Service *service.PRService
 }
 
 // CreatePRRequest представляет запрос на создание Pull Request.
-// Используется для десериализации JSON из HTTP запроса.
 type CreatePRRequest struct {
-	Title    string    `json:"pull_request_name"` // Название PR
-	AuthorID uuid.UUID `json:"author_id"`         // ID автора PR
+	Title    string    `json:"pull_request_name"`
+	AuthorID uuid.UUID `json:"author_id"`
 }
 
 // ReassignReviewerRequest представляет запрос на переназначение ревьювера.
-// Используется для десериализации JSON из HTTP запроса.
 type ReassignReviewerRequest struct {
-	ReviewerID uuid.UUID `json:"reviewer_id"` // ID ревьювера для замены
+	ReviewerID uuid.UUID `json:"reviewer_id"`
 }
 
 // CreatePR обрабатывает HTTP POST запрос на создание Pull Request.
-// Endpoint: POST /api/v1/pull-requests
-//
-// Процесс:
-//  1. Парсит JSON из тела запроса
-//  2. Создает модель PR
-//  3. Вызывает сервис для создания PR (автоматически назначаются ревьюверы)
-//  4. Возвращает созданный PR с кодом 201 Created
-//
-// Ошибки:
-//   - 400 Bad Request: неверный формат JSON
-//   - 404 Not Found: автор не найден
-//   - 500 Internal Server Error: внутренняя ошибка сервера
 func (h *PRHandler) CreatePR(w http.ResponseWriter, r *http.Request) {
-	// Парсим JSON из тела запроса
 	var req CreatePRRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	// Создаем модель PR из запроса
 	pr := &model.PullRequest{
 		Title:    req.Title,
 		AuthorID: req.AuthorID,
 	}
 
-	// Вызываем сервис для создания PR
-	// Сервис автоматически назначит до 2 ревьюверов из команды автора
 	createdPR, err := h.Service.CreatePR(pr)
 	if err != nil {
-		// Обрабатываем специфичные ошибки
 		if err.Error() == "author not found" {
-			http.Error(w, err.Error(), http.StatusNotFound)
+			http.Error(w, "Автор/команда не найдены", http.StatusNotFound)
 			return
 		}
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	// Возвращаем созданный PR с кодом 201 Created
+	pullReq, errGetting := h.Service.GetPRByID(createdPR.ID)
+	if errGetting != nil {
+		http.Error(w, errGetting.Error(), http.StatusInternalServerError)
+		return
+	}
+	if pullReq != nil {
+		http.Error(w, "PR уже существует", http.StatusConflict)
+		return
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(createdPR)
+	err = json.NewEncoder(w).Encode("PR создан")
+	if err != nil {
+		return
+	}
 }
 
 func (h *PRHandler) GetPR(w http.ResponseWriter, r *http.Request) {
@@ -94,71 +83,175 @@ func (h *PRHandler) GetPR(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(pr)
+	err = json.NewEncoder(w).Encode(pr)
+	if err != nil {
+		return
+	}
 }
 
 func (h *PRHandler) ReassignReviewer(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	prIDStr := vars["pull_request_id"]
-	prID, err := uuid.Parse(prIDStr)
-	if err != nil {
-		http.Error(w, "invalid PR UUID", http.StatusBadRequest)
-		return
+	w.Header().Set("Content-Type", "application/json")
+
+	// 1. Читаем JSON
+	var req struct {
+		PullRequestID string `json:"pull_request_id"`
+		OldUserID     string `json:"old_user_id"`
 	}
 
-	var req ReassignReviewerRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, `{"error":"invalid request body"}`, http.StatusBadRequest)
 		return
 	}
 
-	updatedPR, err := h.Service.ReassignReviewer(prID, req.ReviewerID)
+	// 2. Проверяем, что пришли нужные поля
+	if req.PullRequestID == "" || req.OldUserID == "" {
+		http.Error(w, `{"error":"pull_request_id and old_user_id are required"}`, http.StatusBadRequest)
+		return
+	}
+
+	// 3. Парсим UUID
+	prID, err := uuid.Parse(req.PullRequestID)
 	if err != nil {
-		if err.Error() == "pull request not found" {
-			http.Error(w, err.Error(), http.StatusNotFound)
+		http.Error(w, `{"error":"invalid pull_request_id (must be UUID)"}`, http.StatusBadRequest)
+		return
+	}
+
+	oldUserID, err := uuid.Parse(req.OldUserID)
+	if err != nil {
+		http.Error(w, `{"error":"invalid old_user_id (must be UUID)"}`, http.StatusBadRequest)
+		return
+	}
+
+	// 4. Вызываем доменную логику
+	updatedPR, replacedBy, err := h.Service.ReassignReviewer(prID, oldUserID)
+	if err != nil {
+		switch err.Error() {
+		case "pull request not found", "user not found":
+			w.WriteHeader(http.StatusNotFound)
+			err = json.NewEncoder(w).Encode(map[string]interface{}{
+				"error": map[string]string{
+					"code":    "NOT_FOUND",
+					"message": "PR или пользователь не найден\n",
+				},
+			})
+			if err != nil {
+				return
+			}
+			return
+
+		case "cannot reassign reviewers for merged PR":
+			w.WriteHeader(http.StatusConflict)
+			err = json.NewEncoder(w).Encode(map[string]interface{}{
+				"error": map[string]string{
+					"code":    "PR_MERGED",
+					"message": "Нельзя менять после MERGED",
+				},
+			})
+			if err != nil {
+				return
+			}
+			return
+
+		case "reviewer not assigned to this PR":
+			w.WriteHeader(http.StatusConflict)
+			err = json.NewEncoder(w).Encode(map[string]interface{}{
+				"error": map[string]string{
+					"code":    "NOT_ASSIGNED",
+					"message": "Пользователь не был назначен ревьювером",
+				},
+			})
+			if err != nil {
+				return
+			}
+			return
+
+		case "no available reviewers in the team":
+			w.WriteHeader(http.StatusConflict)
+			err = json.NewEncoder(w).Encode(map[string]interface{}{
+				"error": map[string]string{
+					"code":    "NO_CANDIDATE",
+					"message": "Нет доступных кандидатов",
+				},
+			})
+			if err != nil {
+				return
+			}
 			return
 		}
-		if err.Error() == "cannot reassign reviewers for merged PR" {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-		if err.Error() == "reviewer not assigned to this PR" {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-		if err.Error() == "no available reviewers in the team" {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
+
+		// fallback
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(updatedPR)
+	// 5. Возвращаем успешный ответ
+	err = json.NewEncoder(w).Encode(map[string]interface{}{
+		"message":     "Переназначение выполнено",
+		"pr":          updatedPR,
+		"replaced_by": replacedBy,
+	})
+	if err != nil {
+		return
+	}
 }
 
 func (h *PRHandler) MergePR(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	prIDStr := vars["pull_request_id"]
-	prID, err := uuid.Parse(prIDStr)
-	if err != nil {
-		http.Error(w, "invalid UUID", http.StatusBadRequest)
+	w.Header().Set("Content-Type", "application/json")
+
+	// 1. Читаем JSON в структуру
+	var req struct {
+		PullRequestID string `json:"pull_request_id"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, `{"error": "invalid request body"}`, http.StatusBadRequest)
 		return
 	}
 
-	mergedPR, err := h.Service.MergePR(prID)
+	// 2. Проверяем, что значение пришло
+	if req.PullRequestID == "" {
+		http.Error(w, `{"error": "pull_request_id is required"}`, http.StatusBadRequest)
+		return
+	}
+
+	// 3. Парсим UUID
+	prID, err := uuid.Parse(req.PullRequestID)
 	if err != nil {
-		if err.Error() == "pull request not found" {
-			http.Error(w, err.Error(), http.StatusNotFound)
+		http.Error(w, `{"error": "invalid pull_request_id (must be UUID)"}`, http.StatusBadRequest)
+		return
+	}
+
+	// 4. Вызываем сервис
+	_, errMerged := h.Service.MergePR(prID)
+	if errMerged != nil {
+		if errMerged.Error() == "pull request not found" {
+			w.WriteHeader(http.StatusNotFound)
+			err = json.NewEncoder(w).Encode(map[string]string{
+				"error": "PR не найден",
+			})
+			if err != nil {
+				return
+			}
 			return
 		}
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+
+		w.WriteHeader(http.StatusInternalServerError)
+		err = json.NewEncoder(w).Encode(map[string]string{
+			"error": errMerged.Error(),
+		})
+		if err != nil {
+			return
+		}
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(mergedPR)
+	// 5. Возвращаем PR
+	err = json.NewEncoder(w).Encode(map[string]interface{}{
+		"pr": "PR в состоянии MERGED",
+	})
+	if err != nil {
+		return
+	}
 }
 
 func (h *PRHandler) GetAllPRs(w http.ResponseWriter, r *http.Request) {
@@ -169,5 +262,8 @@ func (h *PRHandler) GetAllPRs(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(prs)
+	err = json.NewEncoder(w).Encode(prs)
+	if err != nil {
+		return
+	}
 }

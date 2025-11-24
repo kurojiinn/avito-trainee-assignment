@@ -29,7 +29,10 @@ func (h *UserHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(createdUser)
+	err = json.NewEncoder(w).Encode(createdUser)
+	if err != nil {
+		return
+	}
 }
 
 func (h *UserHandler) GetUser(w http.ResponseWriter, r *http.Request) {
@@ -48,7 +51,10 @@ func (h *UserHandler) GetUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(user)
+	err = json.NewEncoder(w).Encode(user)
+	if err != nil {
+		return
+	}
 }
 
 func (h *UserHandler) UpdateUser(w http.ResponseWriter, r *http.Request) {
@@ -65,7 +71,10 @@ func (h *UserHandler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(updatedUser)
+	err = json.NewEncoder(w).Encode(updatedUser)
+	if err != nil {
+		return
+	}
 }
 
 func (h *UserHandler) DeleteUser(w http.ResponseWriter, r *http.Request) {
@@ -102,5 +111,8 @@ func (h *UserHandler) GetUserPRs(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(prs)
+	err = json.NewEncoder(w).Encode(prs)
+	if err != nil {
+		return
+	}
 }

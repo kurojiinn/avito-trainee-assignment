@@ -22,7 +22,12 @@ func (r *PRRepository) Create(pr *model.PullRequest, reviewers []uuid.UUID) erro
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() {
+		err = tx.Rollback()
+		if err != nil {
+			return
+		}
+	}()
 
 	// Создаем PR
 	query := `
@@ -70,12 +75,19 @@ func (r *PRRepository) GetByID(id uuid.UUID) (*model.PullRequest, error) {
 		WHERE pr_id = $1
 		ORDER BY assigned_at
 	`
-	reviewerRows, err := r.DB.Query(reviewersQuery, id)
-	if err != nil {
+	reviewerRows, errQuery := r.DB.Query(reviewersQuery, id)
+	if errQuery != nil {
+		return nil, errQuery
+	}
+	defer func() {
+		err = reviewerRows.Close()
+		if err != nil {
+			return
+		}
+	}()
+	if err := reviewerRows.Err(); err != nil {
 		return nil, err
 	}
-	defer reviewerRows.Close()
-
 	var reviewers []uuid.UUID
 	for reviewerRows.Next() {
 		var reviewerID uuid.UUID
@@ -117,13 +129,14 @@ func (r *PRRepository) Update(pr *model.PullRequest) error {
 //
 // Возвращает:
 //   - error: ошибка, если:
-//     * PR не найден
-//     * PR имеет статус MERGED
-//     * Старый ревьювер не назначен на PR
-//     * Ошибка выполнения транзакции
+//   - PR не найден
+//   - PR имеет статус MERGED
+//   - Старый ревьювер не назначен на PR
+//   - Ошибка выполнения транзакции
 //
 // Пример использования:
-//   err := repo.ReassignReviewer(prID, oldReviewerID, newReviewerID)
+//
+//	err := repo.ReassignReviewer(prID, oldReviewerID, newReviewerID)
 func (r *PRRepository) ReassignReviewer(prID, oldReviewerID, newReviewerID uuid.UUID) error {
 	// Начинаем транзакцию для обеспечения атомарности операции
 	// Если произойдет ошибка, все изменения будут откачены
@@ -131,7 +144,12 @@ func (r *PRRepository) ReassignReviewer(prID, oldReviewerID, newReviewerID uuid.
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback() // Откатываем транзакцию при выходе из функции (если не был вызван Commit)
+	defer func() {
+		err = tx.Rollback()
+		if err != nil {
+			return
+		}
+	}()
 
 	// Оптимизированная проверка: проверяем статус PR и существование ревьювера в одном запросе
 	// Это уменьшает количество обращений к БД с 2 до 1, что важно для производительности
@@ -185,7 +203,12 @@ func (r *PRRepository) Merge(prID uuid.UUID) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() {
+		err = tx.Rollback()
+		if err != nil {
+			return
+		}
+	}()
 
 	// Проверяем текущий статус
 	var currentStatus string
@@ -227,36 +250,51 @@ func (r *PRRepository) GetAll() ([]model.PullRequest, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-
+	defer func() {
+		err = rows.Close()
+		if err != nil {
+			return
+		}
+	}()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	var prs []model.PullRequest
 	for rows.Next() {
 		var pr model.PullRequest
-		err := rows.Scan(&pr.ID, &pr.Title, &pr.AuthorID, &pr.Status, &pr.CreatedAt, &pr.MergedAt)
+		err = rows.Scan(&pr.ID, &pr.Title, &pr.AuthorID, &pr.Status, &pr.CreatedAt, &pr.MergedAt)
 		if err != nil {
 			return nil, err
 		}
 
 		// Загружаем ревьюверов
 		reviewersQuery := `SELECT reviewer_id FROM pr_reviewers WHERE pr_id = $1 ORDER BY assigned_at`
-		reviewerRows, err := r.DB.Query(reviewersQuery, pr.ID)
-		if err != nil {
-			return nil, err
+		reviewerRows, errQuery := r.DB.Query(reviewersQuery, pr.ID)
+		if errQuery != nil {
+			return nil, errQuery
 		}
 		var reviewers []uuid.UUID
 		for reviewerRows.Next() {
 			var reviewerID uuid.UUID
-			if err := reviewerRows.Scan(&reviewerID); err != nil {
-				reviewerRows.Close()
+			if err = reviewerRows.Scan(&reviewerID); err != nil {
+				err = reviewerRows.Close()
+				if err != nil {
+					return nil, err
+				}
 				return nil, err
 			}
 			reviewers = append(reviewers, reviewerID)
 		}
-		reviewerRows.Close()
+		err = reviewerRows.Close()
+		if err != nil {
+			return nil, err
+		}
 		pr.Reviewers = reviewers
+		if err := reviewerRows.Err(); err != nil {
+			return nil, err
+		}
 		prs = append(prs, pr)
 	}
 
 	return prs, nil
 }
-

@@ -5,7 +5,6 @@ package service
 import (
 	"avito-assignment/internal/model"
 	"avito-assignment/internal/repository"
-	"database/sql"
 	"errors"
 	"math/rand"
 	"time"
@@ -47,7 +46,7 @@ func (s *PRService) CreatePR(pr *model.PullRequest) (*model.PullRequest, error) 
 	// Проверяем существование автора в системе
 	author, err := s.userRepo.GetUserByID(pr.AuthorID)
 	if err != nil {
-		return nil, errors.New("author not found")
+		return nil, errors.New("Автор/команда не найдены")
 	}
 
 	// Получаем активных пользователей команды автора, исключая самого автора
@@ -105,20 +104,19 @@ func (s *PRService) GetPRByID(id uuid.UUID) (*model.PullRequest, error) {
 //
 // Возвращает:
 //   - Обновленный PR с новым ревьювером или ошибку
-func (s *PRService) ReassignReviewer(prID, oldReviewerID uuid.UUID) (*model.PullRequest, error) {
-	// Шаг 1: Проверяем существование PR и получаем его данные
+func (s *PRService) ReassignReviewer(
+	prID uuid.UUID,
+	oldReviewerID uuid.UUID,
+) (*model.PullRequest, uuid.UUID, error) {
 	pr, err := s.prRepo.GetByID(prID)
 	if err != nil {
-		return nil, errors.New("pull request not found")
+		return nil, uuid.Nil, errors.New("pull request not found")
 	}
 
-	// Шаг 2: Проверяем, что PR не в статусе MERGED
-	// После объединения PR изменение ревьюверов запрещено
 	if pr.Status == model.MERGED {
-		return nil, errors.New("cannot reassign reviewers for merged PR")
+		return nil, uuid.Nil, errors.New("cannot reassign reviewers for merged PR")
 	}
 
-	// Шаг 3: Проверяем, что старый ревьювер действительно назначен на этот PR
 	found := false
 	for _, reviewerID := range pr.Reviewers {
 		if reviewerID == oldReviewerID {
@@ -127,54 +125,46 @@ func (s *PRService) ReassignReviewer(prID, oldReviewerID uuid.UUID) (*model.Pull
 		}
 	}
 	if !found {
-		return nil, errors.New("reviewer not assigned to this PR")
+		return nil, uuid.Nil, errors.New("reviewer not assigned to this PR")
 	}
 
-	// Шаг 4: Получаем информацию о старом ревьювере
-	// Нужно знать его команду для выбора замены
 	oldReviewer, err := s.userRepo.GetUserByID(oldReviewerID)
 	if err != nil {
-		return nil, errors.New("old reviewer not found")
+		return nil, uuid.Nil, errors.New("old reviewer not found")
 	}
 
-	// Шаг 5: Получаем активных пользователей команды старого ревьювера
-	// Исключаем автора PR, старого ревьювера и уже назначенных ревьюверов
 	excludeIDs := []uuid.UUID{pr.AuthorID, oldReviewerID}
-	// Добавляем уже назначенных ревьюверов в список исключений
-	// чтобы новый ревьювер не совпал с уже существующими
 	for _, reviewerID := range pr.Reviewers {
-		if reviewerID != oldReviewerID { // Старого ревьювера уже добавили
+		if reviewerID != oldReviewerID {
 			excludeIDs = append(excludeIDs, reviewerID)
 		}
 	}
 
-	candidates, err := s.userRepo.GetActiveUsersByTeamExcluding(oldReviewer.TeamID, excludeIDs)
+	candidates, err := s.userRepo.GetActiveUsersByTeamExcluding(
+		oldReviewer.TeamID,
+		excludeIDs,
+	)
 	if err != nil {
-		return nil, err
+		return nil, uuid.Nil, err
 	}
-
-	// Шаг 6: Проверяем наличие доступных кандидатов
 	if len(candidates) == 0 {
-		return nil, errors.New("no available reviewers in the team")
+		return nil, uuid.Nil, errors.New("no available reviewers in the team")
 	}
 
-	// Шаг 7: Выбираем случайного нового ревьювера из доступных кандидатов
-	// Используем криптографически безопасный генератор случайных чисел
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 	newReviewerID := candidates[rng.Intn(len(candidates))].ID
 
-	// Шаг 8: Выполняем переназначение в базе данных (в транзакции)
 	err = s.prRepo.ReassignReviewer(prID, oldReviewerID, newReviewerID)
 	if err != nil {
-		// Обрабатываем специфичные ошибки
-		if err == sql.ErrNoRows {
-			return nil, errors.New("cannot reassign reviewers for merged PR")
-		}
-		return nil, err
+		return nil, uuid.Nil, err
 	}
 
-	// Шаг 9: Возвращаем обновленный PR с новым списком ревьюверов
-	return s.prRepo.GetByID(prID)
+	updated, err := s.prRepo.GetByID(prID)
+	if err != nil {
+		return nil, uuid.Nil, err
+	}
+
+	return updated, newReviewerID, nil
 }
 
 // MergePR переводит Pull Request в статус MERGED.

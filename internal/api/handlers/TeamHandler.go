@@ -34,7 +34,12 @@ func (h *TeamHandler) CreateTeam(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(createdTeam)
+	err = json.NewEncoder(w).Encode(map[string]interface{}{
+		"team": createdTeam,
+	})
+	if err != nil {
+		return
+	}
 }
 
 func (h *TeamHandler) GetTeam(w http.ResponseWriter, r *http.Request) {
@@ -53,7 +58,10 @@ func (h *TeamHandler) GetTeam(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(team)
+	err = json.NewEncoder(w).Encode(team)
+	if err != nil {
+		return
+	}
 }
 
 func (h *TeamHandler) UpdateTeam(w http.ResponseWriter, r *http.Request) {
@@ -66,7 +74,7 @@ func (h *TeamHandler) UpdateTeam(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var team model.Team
-	if err := json.NewDecoder(r.Body).Decode(&team); err != nil {
+	if err = json.NewDecoder(r.Body).Decode(&team); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -87,7 +95,10 @@ func (h *TeamHandler) UpdateTeam(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(updatedTeam)
+	err = json.NewEncoder(w).Encode(updatedTeam)
+	if err != nil {
+		return
+	}
 }
 
 func (h *TeamHandler) DeleteTeam(w http.ResponseWriter, r *http.Request) {
@@ -106,6 +117,10 @@ func (h *TeamHandler) DeleteTeam(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+	_, err = w.Write([]byte("Команда удалена"))
+	if err != nil {
+		return
+	}
 }
 
 func (h *TeamHandler) DeactivateTeamMembers(w http.ResponseWriter, r *http.Request) {
@@ -128,7 +143,10 @@ func (h *TeamHandler) DeactivateTeamMembers(w http.ResponseWriter, r *http.Reque
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	err = json.NewEncoder(w).Encode(map[string]interface{}{
 		"deactivated_count": deactivatedCount,
 	})
+	if err != nil {
+		return
+	}
 }

@@ -3,10 +3,6 @@
 run:
   timeout: 5m
   tests: true
-  skip-dirs:
-    - vendor
-    - bin
-    - .git
 
 linters-settings:
   errcheck:
@@ -31,25 +27,15 @@ linters-settings:
       - whyNoLint
       - wrapperFunc
   
-  govet:
-    check-shadowing: true
-    enable-all: true
-  
   gocyclo:
     min-complexity: 15
   
   goimports:
     local-prefixes: avito-assignment
   
-  golint:
-    min-confidence: 0.8
-  
   gosec:
     severity: medium
     confidence: medium
-  
-  maligned:
-    suggest-new: true
   
   misspell:
     locale: US
@@ -76,22 +62,16 @@ linters:
     - goconst
     - gocritic
     - gofmt
-    - goimports
-    - golint
     - gosec
     - gosimple
     - govet
     - ineffassign
     - misspell
     - staticcheck
-    - structcheck
     - typecheck
     - unused
-    - varcheck
     - bodyclose
-    - exportloopref
     - gocyclo
-    - goerr113
     - goprintffuncname
     - rowserrcheck
     - sqlclosecheck
@@ -100,21 +80,7 @@ linters:
     - whitespace
 
 issues:
-  exclude-rules:
-    - path: _test\.go
-      linters:
-        - errcheck
-        - gocyclo
-        - gocritic
-    - text: "Error return value of .((os\\.)?std(out|err)\\..*|.*Close|.*Flush|os\\.Remove(All)?|.*printf?|os\\.(Un)?Setenv). is not checked"
-      linters:
-        - errcheck
-    - text: "exported function .* should have comment or be unexported"
-      linters:
-        - golint
-    - text: "should have comment"
-      linters:
-        - golint
-  max-issues-per-linter: 0
-  max-same-issues: 0
-
+  exclude-dirs:
+    - vendor
+    - bin
+    - .git

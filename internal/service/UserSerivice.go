@@ -16,9 +16,8 @@ func NewUserService(userRepo *repository.UserRepository) *UserService {
 	return &UserService{userRepo: userRepo}
 }
 
-// Создать пользователя
+// CreateUser Создать пользователя
 func (s *UserService) CreateUser(userC *model.User) (*model.User, error) {
-
 	user := &model.User{
 		ID:       uuid.New(),
 		Username: userC.Username,

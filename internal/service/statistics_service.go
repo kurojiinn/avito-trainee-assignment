@@ -17,4 +17,3 @@ func NewStatisticsService(statsRepo *repository.StatisticsRepository) *Statistic
 func (s *StatisticsService) GetReviewStats() (*model.ReviewStats, error) {
 	return s.statsRepo.GetReviewStats()
 }
-

@@ -4,6 +4,7 @@ import (
 	"avito-assignment/internal/model"
 	"avito-assignment/internal/repository"
 	"errors"
+	"fmt"
 
 	"github.com/google/uuid"
 )
@@ -23,16 +24,39 @@ func NewTeamService(teamRepo *repository.TeamRepository, userRepo *repository.Us
 // CreateTeam создает команду
 func (s *TeamService) CreateTeam(team *model.Team) (*model.Team, error) {
 	// Проверяем уникальность имени
-	existing, _ := s.teamRepo.GetByName(team.Name)
-	if existing != nil {
-		return nil, errors.New("team with this name already exists")
-	}
-
-	team.ID = uuid.New()
-	err := s.teamRepo.Create(team)
+	existing, err := s.teamRepo.GetByName(team.Name)
 	if err != nil {
 		return nil, err
 	}
+	if existing != nil {
+		return nil, errors.New("team with this name already exists" + team.Name)
+	}
+
+	team.ID = uuid.New()
+	err = s.teamRepo.Create(team)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, member := range team.Members {
+		userID := uuid.New()
+		user := &model.User{
+			ID:       userID,
+			Username: member.Username,
+			TeamID:   team.ID,
+			IsActive: member.IsActive,
+		}
+		err = s.userRepo.CreateUser(user)
+		if err != nil {
+			return nil, fmt.Errorf("invalid user_id: %s", user.ID)
+		}
+	}
+
+	team.Members, err = s.userRepo.GetUsersByTeam(team.ID)
+	if err != nil {
+		return nil, err
+	}
+
 	return team, nil
 }
 
@@ -61,7 +85,10 @@ func (s *TeamService) UpdateTeam(team *model.Team) (*model.Team, error) {
 	}
 
 	// Проверяем уникальность имени (если изменилось)
-	existing, _ := s.teamRepo.GetByName(team.Name)
+	existing, errGetting := s.teamRepo.GetByName(team.Name)
+	if errGetting != nil {
+		return nil, errGetting
+	}
 	if existing != nil && existing.ID != team.ID {
 		return nil, errors.New("team with this name already exists")
 	}
@@ -78,7 +105,7 @@ func (s *TeamService) DeleteTeam(id uuid.UUID) error {
 	return s.teamRepo.Delete(id)
 }
 
-//ДОП задание
+// ДОП задание
 
 // DeactivateTeamMembers массово деактивирует всех пользователей команды
 // и безопасно переназначает ревьюверов для открытых PR
@@ -122,7 +149,7 @@ func (s *TeamService) DeactivateTeamMembers(teamID uuid.UUID, prService *PRServi
 			if userIDMap[reviewerID] {
 				// Используем существующий метод переназначения
 				// Он автоматически найдет замену из команды ревьювера
-				_, err := prService.ReassignReviewer(pr.ID, reviewerID)
+				_, _, err = prService.ReassignReviewer(pr.ID, reviewerID)
 				if err != nil {
 					// Если не удалось переназначить (нет доступных ревьюверов),
 					// просто пропускаем - ревьювер будет деактивирован

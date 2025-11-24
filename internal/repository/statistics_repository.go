@@ -49,7 +49,7 @@ func (r *StatisticsRepository) GetReviewStats() (*model.ReviewStats, error) {
 	for rows.Next() {
 		var userStat model.UserAssignmentStats
 		var userID uuid.UUID
-		err := rows.Scan(&userID, &userStat.Username, &userStat.Assignments)
+		err = rows.Scan(&userID, &userStat.Username, &userStat.Assignments)
 		if err != nil {
 			return nil, err
 		}
@@ -80,7 +80,7 @@ func (r *StatisticsRepository) GetReviewStats() (*model.ReviewStats, error) {
 	for rows.Next() {
 		var prStat model.PRAssignmentStats
 		var prID uuid.UUID
-		err := rows.Scan(&prID, &prStat.PRTitle, &prStat.ReviewersCount, &prStat.Status)
+		err = rows.Scan(&prID, &prStat.PRTitle, &prStat.ReviewersCount, &prStat.Status)
 		if err != nil {
 			return nil, err
 		}
@@ -118,4 +118,3 @@ func (r *StatisticsRepository) GetReviewStats() (*model.ReviewStats, error) {
 
 	return stats, nil
 }
-

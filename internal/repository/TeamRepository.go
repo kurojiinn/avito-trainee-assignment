@@ -81,6 +81,9 @@ func (r *TeamRepository) GetMembers(teamID uuid.UUID) ([]model.User, error) {
 		}
 		members = append(members, u)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	return members, nil
 }
 
@@ -100,4 +103,3 @@ func (r *TeamRepository) Delete(id uuid.UUID) error {
 	_, err := r.DB.Exec("DELETE FROM teams WHERE id = $1", id)
 	return err
 }
-

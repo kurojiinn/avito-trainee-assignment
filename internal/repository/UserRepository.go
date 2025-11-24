@@ -1,6 +1,4 @@
 // Package repository предоставляет функции для работы с базой данных.
-// Репозитории отвечают за выполнение SQL запросов и преобразование
-// данных БД в доменные модели.
 package repository
 
 import (
@@ -14,19 +12,11 @@ import (
 )
 
 // UserRepository предоставляет методы для работы с пользователями в базе данных.
-// Использует стандартный database/sql для выполнения SQL запросов.
 type UserRepository struct {
-	// DB - соединение с базой данных PostgreSQL
 	DB *sql.DB
 }
 
 // NewUserRepository создает новый экземпляр UserRepository.
-//
-// Параметры:
-//   - db: соединение с базой данных
-//
-// Возвращает:
-//   - *UserRepository: новый репозиторий для работы с пользователями
 func NewUserRepository(db *sql.DB) *UserRepository {
 	return &UserRepository{DB: db}
 }
@@ -160,7 +150,12 @@ func (r *UserRepository) GetPRsByReviewer(userID uuid.UUID) ([]model.PullRequest
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() {
+		err = rows.Close()
+		if err != nil {
+			return
+		}
+	}()
 
 	var prs []model.PullRequest
 	for rows.Next() {
@@ -181,14 +176,26 @@ func (r *UserRepository) GetPRsByReviewer(userID uuid.UUID) ([]model.PullRequest
 		for reviewerRows.Next() {
 			var reviewerID uuid.UUID
 			if err := reviewerRows.Scan(&reviewerID); err != nil {
-				reviewerRows.Close()
+				err = reviewerRows.Close()
+				if err != nil {
+					return nil, err
+				}
 				return nil, err
 			}
 			reviewers = append(reviewers, reviewerID)
 		}
-		reviewerRows.Close()
+		err = reviewerRows.Close()
+		if err != nil {
+			return nil, err
+		}
 		pr.Reviewers = reviewers
 		prs = append(prs, pr)
+		if err := reviewerRows.Err(); err != nil {
+			return nil, err
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 	return prs, nil
 }
@@ -208,12 +215,7 @@ func (r *UserRepository) GetPRsByReviewer(userID uuid.UUID) ([]model.PullRequest
 //   - []model.User: список активных пользователей (is_active = true)
 //     Результаты отсортированы по username
 //   - error: ошибка выполнения запроса
-//
-// Пример использования:
-//
-//	// Получить всех активных пользователей команды, кроме автора PR
-//	candidates, err := repo.GetActiveUsersByTeam(teamID, authorID)
-func (r *UserRepository) GetActiveUsersByTeam(teamID uuid.UUID, excludeID uuid.UUID) ([]model.User, error) {
+func (r *UserRepository) GetActiveUsersByTeam(teamID, excludeID uuid.UUID) ([]model.User, error) {
 	query := `
 		SELECT id, username, team_id, is_active
 		FROM users
@@ -234,6 +236,9 @@ func (r *UserRepository) GetActiveUsersByTeam(teamID uuid.UUID, excludeID uuid.U
 			return nil, err
 		}
 		users = append(users, u)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 	return users, nil
 }
@@ -256,6 +261,33 @@ func (r *UserRepository) DeactivateTeamMembers(teamID uuid.UUID) (int, error) {
 	}
 
 	return int(rowsAffected), nil
+}
+func (r *UserRepository) GetUsersByTeam(teamID uuid.UUID) ([]model.User, error) {
+	query := `
+			SELECT id, username, team_id, is_active
+			FROM users
+			WHERE team_id = $1 AND is_active = true
+			ORDER BY username
+		`
+	rows, err := r.DB.Query(query, teamID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var users []model.User
+	for rows.Next() {
+		var u model.User
+		err := rows.Scan(&u.ID, &u.Username, &u.TeamID, &u.IsActive)
+		if err != nil {
+			return nil, err
+		}
+		users = append(users, u)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return users, nil
 }
 
 // GetActiveUsersByTeamExcluding возвращает активных пользователей команды, исключая несколько пользователей
@@ -284,7 +316,6 @@ func (r *UserRepository) GetActiveUsersByTeamExcluding(teamID uuid.UUID, exclude
 		}
 		return users, nil
 	}
-
 	// Build query with exclusions
 	query := `
 		SELECT id, username, team_id, is_active
@@ -306,7 +337,12 @@ func (r *UserRepository) GetActiveUsersByTeamExcluding(teamID uuid.UUID, exclude
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() {
+		err = rows.Close()
+		if err != nil {
+			panic(err)
+		}
+	}()
 
 	var users []model.User
 	for rows.Next() {
@@ -316,6 +352,9 @@ func (r *UserRepository) GetActiveUsersByTeamExcluding(teamID uuid.UUID, exclude
 			return nil, err
 		}
 		users = append(users, u)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 	return users, nil
 }

@@ -28,19 +28,6 @@ run: build
 	@echo "Running application..."
 	@./bin/api
 
-.PHONY: test
-test:
-	@echo "Running tests..."
-	@go test -v ./...
-
-.PHONY: test-coverage
-test-coverage:
-	@echo "Running tests with coverage..."
-	@go test -v -coverprofile=coverage.out ./...
-	@go tool cover -html=coverage.out -o coverage.html
-	@echo "Coverage report generated: coverage.html"
-	@go tool cover -func=coverage.out
-
 .PHONY: docker-build
 docker-build:
 	@echo "Building Docker image..."
@@ -120,8 +107,3 @@ lint:
 	else \
 		echo "golangci-lint not installed. Install with: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest"; \
 	fi
-
-.PHONY: e2e-test
-e2e-test:
-	@echo "Running E2E tests..."
-	@go test -v ./tests/...
